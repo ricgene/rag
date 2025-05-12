@@ -212,6 +212,31 @@ python -c "from rag_app import load_documents, split_documents, create_vector_st
    - Provides context-aware answers
    - Includes source information in responses
 
+## What Happens When We Process Documents
+
+1. **Document Ingestion**:
+   - The system loads documents (PDFs, Excels, HTMLs) from the `financial_docs/` directory.
+   - HTML files are preprocessed to extract clean text.
+
+2. **Chunking**:
+   - Documents are split into smaller chunks (e.g., 1000 characters with 200 character overlap) to facilitate processing.
+
+3. **Vectorization**:
+   - Each chunk is converted into a vector embedding using OpenAI's embedding model.
+   - These embeddings are stored in a local FAISS vector store for efficient similarity search.
+
+4. **Retrieval**:
+   - When a question is asked, the system retrieves the most relevant chunks from the vector store based on similarity to the question.
+   - The number of retrieved chunks (e.g., 8) is increased to capture more context.
+
+5. **Prompting**:
+   - The retrieved chunks are passed to the LLM (e.g., GPT-4) along with a prompt that instructs it to extract specific information (e.g., company names, financial data).
+   - The prompt guides the model to provide a comprehensive answer based on the retrieved context.
+
+6. **Response Generation**:
+   - The LLM generates a response based on the retrieved context and the prompt instructions.
+   - The response is returned to the user.
+
 ## Customization
 
 You can customize various aspects of the system:
