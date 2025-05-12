@@ -31,7 +31,7 @@ if not st.session_state.authenticated:
         correct_password = os.getenv("APP_PASSWORD", "onion")
         if password == correct_password:
             st.session_state.authenticated = True
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
     st.stop()
@@ -66,7 +66,7 @@ with st.sidebar:
     # Add logout button
     if st.button("Logout"):
         st.session_state.authenticated = False
-        st.experimental_rerun()
+        st.rerun()
 
 # Load documents and set up RAG chain
 @st.cache_resource
