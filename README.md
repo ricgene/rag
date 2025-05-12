@@ -116,11 +116,11 @@ The application will:
 
 # Financial Document RAG System
 
-This is a Retrieval-Augmented Generation (RAG) system designed to analyze and answer questions about financial documents, including PDFs and Excel files. The system uses OpenAI's GPT models to provide intelligent responses based on the content of your documents.
+This is a Retrieval-Augmented Generation (RAG) system designed to analyze and answer questions about financial documents, including PDFs, Excel files, and HTML files. The system uses OpenAI's GPT models to provide intelligent responses based on the content of your documents.
 
 ## Features
 
-- **Multi-Format Support**: Processes both PDF and Excel (.xlsx) files
+- **Multi-Format Support**: Processes PDF, Excel (.xlsx), and HTML files
 - **Local Vector Store**: Uses FAISS for efficient document storage and retrieval
 - **Metadata Tracking**: Maintains information about processed documents
 - **Interactive Q&A**: Ask questions about your financial documents in natural language
@@ -173,8 +173,8 @@ rag/
 ## Usage
 
 1. **Prepare Your Documents**:
-   - Place your PDF and Excel files in the `financial_docs/` directory
-   - Supported formats: `.pdf`, `.xlsx`
+   - Place your PDF, Excel, and HTML files in the `financial_docs/` directory
+   - Supported formats: `.pdf`, `.xlsx`, `.html`
 
 2. **Run the Application**:
 ```bash
@@ -191,8 +191,9 @@ python -c "from rag_app import load_documents, split_documents, create_vector_st
 
 1. **Document Loading**:
    - The system loads documents from the `financial_docs/` directory
-   - Supports both PDF and Excel files
+   - Supports PDF, Excel, and HTML files
    - Maintains document metadata and source information
+   - HTML files are processed to extract text content while preserving structure
 
 2. **Document Processing**:
    - Documents are split into manageable chunks

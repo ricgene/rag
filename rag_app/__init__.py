@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain_community.document_loaders import DirectoryLoader, TextLoader, PyPDFLoader, UnstructuredExcelLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader, PyPDFLoader, UnstructuredExcelLoader, UnstructuredHTMLLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate
 import json
 from datetime import datetime
+from typing import List
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,21 +23,18 @@ if not os.getenv("OPENAI_API_KEY"):
 contracts_dir = "financial_docs/"
 
 # Step 1: Load documents
-def load_documents():
-    print("Loading financial documents...")
-    pdf_loader = DirectoryLoader(
-        "financial_docs/",
-        glob="*.pdf",
-        loader_cls=PyPDFLoader
+def load_documents() -> List[Document]:
+    """Load documents from the financial_docs directory."""
+    loader = DirectoryLoader(
+        "financial_docs",
+        glob="**/*.*",
+        loader_cls={
+            "*.pdf": PyPDFLoader,
+            "*.xlsx": UnstructuredExcelLoader,
+            "*.html": UnstructuredHTMLLoader,
+        },
     )
-    xlsx_loader = DirectoryLoader(
-        "financial_docs/",
-        glob="*.xlsx",
-        loader_cls=UnstructuredExcelLoader
-    )
-    documents = pdf_loader.load() + xlsx_loader.load()
-    print(f"Loaded {len(documents)} documents")
-    return documents
+    return loader.load()
 
 # Step 2: Split documents into chunks
 def split_documents(documents):
