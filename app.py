@@ -18,7 +18,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# Title and description
+# Initialize session state for authentication
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+# Password check
+if not st.session_state.authenticated:
+    st.title("Financial Document RAG System")
+    password = st.text_input("Enter password to access the application:", type="password")
+    if password:
+        # You can change this password to whatever you want
+        if password == "ragdemo2024":
+            st.session_state.authenticated = True
+            st.experimental_rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+    st.stop()
+
+# Main app content (only shown after authentication)
 st.title("Financial Document RAG System")
 st.markdown("""
 This application allows you to ask questions about financial documents using AI.
@@ -44,6 +61,11 @@ with st.sidebar:
     ### Disclaimer
     This is a demo application. The responses are based on the provided financial documents and may not be complete or up-to-date.
     """)
+    
+    # Add logout button
+    if st.button("Logout"):
+        st.session_state.authenticated = False
+        st.experimental_rerun()
 
 # Load documents and set up RAG chain
 @st.cache_resource
