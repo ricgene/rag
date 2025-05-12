@@ -118,6 +118,24 @@ The application will:
 
 This is a Retrieval-Augmented Generation (RAG) system designed to analyze and answer questions about financial documents, including PDFs, Excel files, and HTML files. The system uses OpenAI's GPT models to provide intelligent responses based on the content of your documents.
 
+## Running the Streamlit UI
+
+To run the Streamlit UI for the RAG system, follow these steps:
+
+1. Ensure you have activated your virtual environment:
+   ```bash
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+2. Start the Streamlit app:
+   ```bash
+   streamlit run app.py
+   ```
+
+3. Open your web browser and navigate to the URL provided in the terminal (usually http://localhost:8501).
+
+4. Use the text input to ask questions about the financial documents.
+
 ## Features
 
 - **Multi-Format Support**: Processes PDF, Excel (.xlsx), and HTML files
