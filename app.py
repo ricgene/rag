@@ -23,6 +23,8 @@ st.title("Financial Document RAG System")
 st.markdown("""
 This application allows you to ask questions about financial documents using AI.
 The system processes PDF, Excel, and HTML files to provide accurate answers based on the document content.
+
+⚠️ **Note**: This is a public demo. Please do not submit sensitive or confidential information.
 """)
 
 # Sidebar
@@ -34,6 +36,13 @@ with st.sidebar:
     - Uses OpenAI's GPT models
     - Provides context-aware answers
     - Maintains document metadata
+    """)
+    
+    # Add a disclaimer
+    st.markdown("---")
+    st.markdown("""
+    ### Disclaimer
+    This is a demo application. The responses are based on the provided financial documents and may not be complete or up-to-date.
     """)
 
 # Load documents and set up RAG chain
