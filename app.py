@@ -27,8 +27,9 @@ if not st.session_state.authenticated:
     st.title("Financial Document RAG System")
     password = st.text_input("Enter password to access the application:", type="password")
     if password:
-        # You can change this password to whatever you want
-        if password == "ragdemo2024":
+        # Using environment variable for password, defaulting to 'onion' if not set
+        correct_password = os.getenv("APP_PASSWORD", "onion")
+        if password == correct_password:
             st.session_state.authenticated = True
             st.experimental_rerun()
         else:
