@@ -8,9 +8,12 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate
+from langchain_core.documents import Document
 import json
 from datetime import datetime
 from typing import List
+from bs4 import BeautifulSoup
+import glob
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,19 +25,39 @@ if not os.getenv("OPENAI_API_KEY"):
 # Define the directory containing your contract markdown files
 contracts_dir = "financial_docs/"
 
+def clean_html_to_text(html_path):
+    with open(html_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    soup = BeautifulSoup(html, 'lxml')
+    for tag in soup(['script', 'style']):
+        tag.decompose()
+    text = soup.get_text(separator='\n', strip=True)
+    return text
+
 # Step 1: Load documents
 def load_documents() -> List[Document]:
-    """Load documents from the financial_docs directory."""
-    loader = DirectoryLoader(
-        "financial_docs",
-        glob="**/*.*",
-        loader_cls={
-            "*.pdf": PyPDFLoader,
-            "*.xlsx": UnstructuredExcelLoader,
-            "*.html": UnstructuredHTMLLoader,
-        },
+    """Load and preprocess documents from the financial_docs directory."""
+    pdf_loader = DirectoryLoader(
+        "financial_docs/",
+        glob="*.pdf",
+        loader_cls=PyPDFLoader
     )
-    return loader.load()
+    xlsx_loader = DirectoryLoader(
+        "financial_docs/",
+        glob="*.xlsx",
+        loader_cls=UnstructuredExcelLoader
+    )
+    # Preprocess HTML files
+    html_docs = []
+    for html_path in glob.glob("financial_docs/*.html"):
+        try:
+            text = clean_html_to_text(html_path)
+            html_docs.append(Document(page_content=text, metadata={"source": html_path}))
+        except Exception as e:
+            print(f"Error processing {html_path}: {e}")
+
+    documents = pdf_loader.load() + xlsx_loader.load() + html_docs
+    return documents
 
 # Step 2: Split documents into chunks
 def split_documents(documents):
@@ -77,8 +100,8 @@ def create_vector_store(splits):
 def setup_rag_chain(vector_store, llm=None, prompt=None):
     print("Setting up RAG chain...")
     
-    # Create a retriever
-    retriever = vector_store.as_retriever(search_kwargs={"k": 4})
+    # Create a retriever with increased k for better coverage
+    retriever = vector_store.as_retriever(search_kwargs={"k": 8})
     
     # Allow injection of prompt and llm
     if prompt is None:
@@ -88,8 +111,10 @@ def setup_rag_chain(vector_store, llm=None, prompt=None):
         
         Question: {question}
         
-        Your answer should be comprehensive, specific, and directly reference information from the contracts.
+        Your answer should be comprehensive, specific, and directly reference information from the documents.
         If the information to answer the question is not in the provided context, say so clearly.
+        If the question asks for company names, extract and list all company names mentioned in the context, even if they are not explicitly labeled as financial data. Include any available financial data or context about these companies. Provide a summary of the financial data if available.
+        Explain what is happening when the system processes the documents, including how it retrieves and uses the context to answer questions.
         """
         prompt = ChatPromptTemplate.from_template(template)
     if llm is None:
