@@ -2,6 +2,7 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from rag_app import load_documents, split_documents, create_vector_store, setup_rag_chain
+import time
 
 # Load environment variables
 load_dotenv()
@@ -95,10 +96,24 @@ if rag_chain:
     if user_question:
         with st.spinner("Searching documents and generating answer..."):
             try:
-                answer = rag_chain.invoke(user_question)
-                st.write("Answer:", answer)
+                # Set a timeout for the chain.invoke call
+                start_time = time.time()
+                timeout = 30  # seconds
+                answer = None
+                while time.time() - start_time < timeout:
+                    try:
+                        answer = rag_chain.invoke(user_question)
+                        break
+                    except Exception as e:
+                        if "timeout" in str(e).lower():
+                            continue
+                        raise e
+                if answer is None:
+                    st.error("The request timed out. Please try again.")
+                else:
+                    st.write("Answer:", answer)
             except Exception as e:
-                st.error(f"Error generating answer: {str(e)}")
+                st.error(f"An error occurred: {e}")
 
     # Example questions
     st.markdown("""
