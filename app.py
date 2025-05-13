@@ -4,8 +4,21 @@ from dotenv import load_dotenv
 from rag_app import load_documents, split_documents, create_vector_store, setup_rag_chain
 import time
 
+# Debug: Print current working directory
+print(f"Current working directory: {os.getcwd()}")
+
 # Load environment variables from .env file in current directory
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+print(f"Looking for .env file at: {env_path}")
+load_dotenv(env_path)
+
+# Debug: Print the API key (first few characters only)
+api_key = os.getenv("OPENAI_API_KEY")
+if api_key:
+    print(f"API Key loaded (first 4 chars): {api_key[:4]}...")
+    print(f"API Key length: {len(api_key)}")
+else:
+    print("No API key found in environment")
 
 # Check for OpenAI API key
 if not os.getenv("OPENAI_API_KEY"):
