@@ -20,20 +20,39 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
         
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pytest-cov pytest-xdist
         
     - name: Run tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
-        pytest tests/ -v --cov=rag_app --cov-report=xml
+        pytest tests/ -v --cov=rag_app --cov-report=xml --cov-report=term-missing -n auto
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
-        fail_ci_if_error: true 
+        fail_ci_if_error: true
+        
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "Test Summary:"
+        echo "-------------"
+        echo "Python Version: ${{ matrix.python-version }}"
+        echo "Test Results:"
+        pytest tests/ -v --cov=rag_app --cov-report=term-missing 
