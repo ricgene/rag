@@ -51,7 +51,7 @@ if 'vector_store' not in st.session_state:
     index_file = os.path.join(vector_store_path, "index.faiss")
     if os.path.exists(index_file):
         print("Loading existing vector store from disk...")
-        embeddings = OpenAIEmbeddings()
+        embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
         st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
         st.session_state.file_name = "All Documents"
         st.session_state.is_reindexed = True
