@@ -11,7 +11,7 @@ pypdf==4.0.2
 openpyxl==3.1.2
 beautifulsoup4==4.12.3
 xlrd>=2.0.1
-pydantic==1.10.13
+pydantic>=1.10.13,<2.0.0
 
 # Testing dependencies
 pytest>=8.0.0

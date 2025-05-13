@@ -59,23 +59,35 @@ if 'answer' not in st.session_state:
 # Try to load existing vector store from disk
 vector_store_path = "vector_store/faiss_index"
 index_file = os.path.join(vector_store_path, "index.faiss")
+
+# Ensure vector store directory exists
+os.makedirs(vector_store_path, exist_ok=True)
+
 if os.path.exists(index_file) and st.session_state.vector_store is None:
     print("Loading existing vector store from disk...")
     try:
         embeddings = OpenAIEmbeddings()
         try:
             # Try with allow_dangerous_deserialization for newer versions
-            st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
-        except TypeError:
+            st.session_state.vector_store = FAISS.load_local(
+                vector_store_path, 
+                embeddings, 
+                allow_dangerous_deserialization=True
+            )
+            print("Successfully loaded vector store with allow_dangerous_deserialization")
+        except (TypeError, AttributeError) as e:
+            print(f"Falling back to standard loading: {str(e)}")
             # Fall back to older version without the parameter
             st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings)
+            print("Successfully loaded vector store with standard loading")
+        
         st.session_state.file_name = "All Documents"
         st.session_state.is_reindexed = True
-        print("Successfully loaded existing vector store")
+        print("Vector store loaded successfully")
     except Exception as e:
         print(f"Error loading vector store: {str(e)}")
         st.error(f"Failed to load vector store: {str(e)}")
-        st.info("Try reindexing your documents using the 'Reindex All Documents' button in the sidebar.")
+        st.info("Please use the 'Reindex All Documents' button in the sidebar to create a new index.")
         st.session_state.vector_store = None
 
 # Password check
