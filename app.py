@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 from rag_app import load_documents, split_documents, create_vector_store, setup_rag_chain
 import time
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from .env file in current directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # Check for OpenAI API key
 if not os.getenv("OPENAI_API_KEY"):
