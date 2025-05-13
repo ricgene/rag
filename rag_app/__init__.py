@@ -18,12 +18,12 @@ warnings.filterwarnings('ignore')
 import pandas as pd
 import re
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file in the project root
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 # Get OpenAI API key from environment variables
 if not os.getenv("OPENAI_API_KEY"):
-    raise ValueError("Please set OPENAI_API_KEY in your .env file")
+    raise ValueError("Please set OPENAI_API_KEY in your .env file or Streamlit secrets")
 
 # Define the directory containing your contract markdown files
 contracts_dir = "financial_docs/"
