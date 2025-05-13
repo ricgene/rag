@@ -1,8 +1,16 @@
 import streamlit as st
 import os
-from dotenv import load_dotenv
-from rag_app import load_documents, split_documents, create_vector_store, setup_rag_chain
+import tempfile
 import time
+from dotenv import load_dotenv
+from langchain_community.document_loaders import PyPDFLoader, UnstructuredExcelLoader, UnstructuredHTMLLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_community.vectorstores import FAISS
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain.prompts import ChatPromptTemplate
+from rag_app import load_documents, split_documents, create_vector_store, setup_rag_chain
 
 # Debug: Print current working directory
 print(f"Current working directory: {os.getcwd()}")
@@ -36,9 +44,40 @@ st.set_page_config(
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 
+# Initialize session state for vector store and document info
+if 'vector_store' not in st.session_state:
+    st.session_state.vector_store = None
+if 'file_name' not in st.session_state:
+    st.session_state.file_name = None
+if 'is_reindexed' not in st.session_state:
+    st.session_state.is_reindexed = False
+if 'last_question' not in st.session_state:
+    st.session_state.last_question = None
+if 'answer' not in st.session_state:
+    st.session_state.answer = None
+
 # Password check
 if not st.session_state.authenticated:
     st.title("Financial Document RAG System")
+    # Add specific styling for password input
+    st.markdown("""
+    <style>
+        .stTextInput input[type="password"] {
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            display: block;
+        }
+        .stTextInput input[type="password"]:focus {
+            border-color: #4CAF50;
+            outline: none;
+            box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+        }
+    </style>
+    """, unsafe_allow_html=True)
     password = st.text_input("Enter password to access the application:", type="password")
     if password:
         # Using environment variable for password, defaulting to 'onion' if not set
@@ -50,6 +89,47 @@ if not st.session_state.authenticated:
             st.error("Incorrect password. Please try again.")
     st.stop()
 
+# Add custom CSS for file uploader (only after authentication)
+st.markdown("""
+<style>
+    /* Style for the file uploader container */
+    .stFileUploader {
+        border: 2px dashed #ccc;
+        border-radius: 5px;
+        padding: 20px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    
+    /* Hover effect */
+    .stFileUploader:hover {
+        border-color: #4CAF50;
+        background-color: rgba(76, 175, 80, 0.1);
+    }
+    
+    /* Style when file is selected */
+    .stFileUploader[data-has-file="true"] {
+        border-color: #4CAF50;
+        background-color: rgba(76, 175, 80, 0.1);
+    }
+    
+    /* Style for the upload button */
+    .stFileUploader button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    
+    .stFileUploader button:hover {
+        background-color: #45a049;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Main app content (only shown after authentication)
 st.title("Financial Document RAG System")
 st.markdown("""
@@ -59,87 +139,268 @@ The system processes PDF, Excel, and HTML files to provide accurate answers base
 ⚠️ **Note**: This is a public demo. Please do not submit sensitive or confidential information.
 """)
 
-# Sidebar
+# Sidebar for configuration
 with st.sidebar:
-    st.header("About")
-    st.markdown("""
-    This RAG (Retrieval-Augmented Generation) system:
-    - Processes multiple document formats
-    - Uses OpenAI's GPT models
-    - Provides context-aware answers
-    - Maintains document metadata
-    """)
+    st.header("Configuration")
+    model_name = st.selectbox(
+        "Select LLM Model",
+        ["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"],
+        index=0,
+        help="Select the OpenAI model to use"
+    )
+    chunk_size = st.slider(
+        "Chunk Size", 
+        min_value=500, 
+        max_value=2000, 
+        value=1000,
+        help="Size of document chunks in characters"
+    )
+    k_value = st.slider(
+        "Number of chunks to retrieve (k)", 
+        min_value=1, 
+        max_value=10, 
+        value=4,
+        help="Number of most relevant chunks to retrieve per query"
+    )
     
-    # Add a disclaimer
+    st.markdown("---")
+    st.markdown("### Document Management")
+    if st.button("Reindex All Documents"):
+        with st.spinner("Reindexing all documents..."):
+            try:
+                # Load and process all documents
+                documents = load_documents()
+                if documents:
+                    splits = split_documents(documents)
+                    vector_store = create_vector_store(splits)
+                    st.session_state.vector_store = vector_store
+                    st.session_state.file_name = "All Documents"
+                    st.session_state.is_reindexed = True
+                    # Clear the RAG chain when reindexing
+                    if 'rag_chain' in st.session_state:
+                        del st.session_state.rag_chain
+                    st.success(f"Successfully reindexed {len(documents)} documents")
+                else:
+                    st.warning("No documents found in the financial_docs directory")
+            except Exception as e:
+                st.error(f"Error reindexing documents: {str(e)}")
+    
     st.markdown("---")
     st.markdown("""
     ### Disclaimer
     This is a demo application. The responses are based on the provided financial documents and may not be complete or up-to-date.
     """)
-    
-    # Add logout button
     if st.button("Logout"):
         st.session_state.authenticated = False
         st.rerun()
 
-# Load documents and set up RAG chain
-@st.cache_resource
-def load_rag_chain():
+# Document processing functions
+def extract_company_info(doc_content, filename):
+    """Extract company information from document content and filename."""
+    # Common company indicators in financial documents
+    company_indicators = [
+        "About", "Company Overview", "Corporate Profile",
+        "About Us", "Company Information", "Corporate Information"
+    ]
+    
+    # Try to find company name in the first few paragraphs
+    content_lower = doc_content.lower()
+    first_paragraphs = doc_content.split('\n\n')[:3]  # Look at first 3 paragraphs
+    
+    # First try to find company name in the first few paragraphs
+    for para in first_paragraphs:
+        para_lower = para.lower()
+        # Look for common company introduction patterns
+        for indicator in company_indicators:
+            if indicator.lower() in para_lower:
+                # Try to extract the company name from the next sentence
+                sentences = para.split('.')
+                for sentence in sentences:
+                    if len(sentence.strip()) > 10:  # Avoid very short sentences
+                        return sentence.strip()
+    
+    # If not found in paragraphs, try to extract from filename
+    filename_upper = filename.upper()
+    # Look for common company name patterns in filename
+    words = filename_upper.split()
+    for word in words:
+        if len(word) > 3:  # Avoid very short words
+            # Clean the word (remove special characters)
+            clean_word = ''.join(c for c in word if c.isalnum())
+            if len(clean_word) > 3:
+                return clean_word.title()
+    
+    return "Unknown"
+
+def process_document(uploaded_file, existing_vector_store=None):
+    """Process an uploaded document based on its file type."""
     try:
-        docs = load_documents()
-        if not docs:
-            st.warning("No documents found in the financial_docs directory")
-            return None
-        splits = split_documents(docs)
-        vs = create_vector_store(splits)
-        return setup_rag_chain(vs)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as temp_file:
+            temp_file.write(uploaded_file.getbuffer())
+            file_path = temp_file.name
+        
+        # Extract metadata from filename
+        filename = uploaded_file.name
+        doc_type = "Unknown"
+        
+        # Try to determine document type
+        if "EARNINGS" in filename.upper() or any(q in filename.upper() for q in ["Q1", "Q2", "Q3", "Q4"]):
+            doc_type = "Earnings Report"
+        elif "TRANSCRIPT" in filename.upper():
+            doc_type = "Earnings Call Transcript"
+        
+        # Load document based on file type
+        if filename.lower().endswith('.pdf'):
+            loader = PyPDFLoader(file_path)
+        elif filename.lower().endswith(('.xlsx', '.xls')):
+            loader = UnstructuredExcelLoader(file_path)
+        elif filename.lower().endswith('.html'):
+            loader = UnstructuredHTMLLoader(file_path)
+        else:
+            raise ValueError(f"Unsupported file type: {filename}")
+        
+        # Load and process the document
+        documents = loader.load()
+        
+        # Add metadata to documents
+        for doc in documents:
+            doc.metadata.update({
+                "source": filename,
+                "doc_type": doc_type,
+                "company": extract_company_info(doc.page_content, filename)
+            })
+        
+        # Split documents
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=st.session_state.get('chunk_size', 1000),
+            chunk_overlap=200
+        )
+        splits = text_splitter.split_documents(documents)
+        
+        # Create embeddings
+        embeddings = OpenAIEmbeddings()
+        
+        # If there's an existing vector store, merge with it
+        if existing_vector_store:
+            existing_vector_store.add_documents(splits)
+            vector_store = existing_vector_store
+        else:
+            vector_store = FAISS.from_documents(splits, embeddings)
+        
+        # Clean up temporary file
+        os.unlink(file_path)
+        
+        return vector_store, filename
+        
     except Exception as e:
-        st.error(f"Error loading documents: {str(e)}")
-        return None
+        st.error(f"Error processing document: {str(e)}")
+        if 'file_path' in locals():
+            os.unlink(file_path)
+        return None, None
 
-# Load the RAG chain
-with st.spinner("Loading documents and setting up the RAG system..."):
-    rag_chain = load_rag_chain()
+def setup_rag_chain(vector_store):
+    """Set up the RAG chain for querying."""
+    retriever = vector_store.as_retriever(search_kwargs={"k": k_value})
+    
+    template = """You are an AI assistant specialized in analyzing financial documents and investment materials.
 
-if rag_chain:
-    # User input
-    user_question = st.text_input("Ask a question about the financial documents:")
+Answer the question based ONLY on the following context:
+{context}
 
-    # Process the question
-    if user_question:
-        with st.spinner("Searching documents and generating answer..."):
-            try:
-                # Set a timeout for the chain.invoke call
-                start_time = time.time()
-                timeout = 30  # seconds
-                answer = None
-                while time.time() - start_time < timeout:
-                    try:
-                        answer = rag_chain.invoke(user_question)
-                        break
-                    except Exception as e:
-                        if "timeout" in str(e).lower():
-                            continue
-                        raise e
-                if answer is None:
-                    st.error("The request timed out. Please try again.")
-                else:
-                    st.write("Answer:", answer)
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+Question: {question}
 
+Your answer should:
+1. Be specific and directly reference information from the documents
+2. Extract and highlight financial metrics when relevant
+3. Be well-structured and easy to read
+4. Only state what is directly supported by the context
+
+Answer:"""
+    
+    prompt = ChatPromptTemplate.from_template(template)
+    llm = ChatOpenAI(model=model_name, temperature=0)
+    
+    def format_docs(docs):
+        return "\n\n".join(f"DOCUMENT SECTION {i+1}:\n{doc.page_content}" for i, doc in enumerate(docs))
+    
+    rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    
+    return rag_chain
+
+# Main app interface
+uploaded_file = st.file_uploader("Upload a document", type=["pdf", "xlsx", "xls", "html", "htm"])
+
+# Display example questions if a vector store exists
+if st.session_state.vector_store is not None:
+    st.write(f"### Ask questions about {st.session_state.file_name}")
+    
     # Example questions
-    st.markdown("""
-    ### Example Questions
-    - What is the forward guidance for the next quarter?
-    - What were the GAAP results for Q1?
-    - What are the key cash flow trends?
-    - What is the revenue breakdown by segment?
-    """)
+    st.write("Try questions like:")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("What are the key financial metrics?"):
+            st.session_state.question = "What are the key financial metrics mentioned in the document?"
+    with col2:
+        if st.button("What are the main risk factors?"):
+            st.session_state.question = "What are the main risk factors or challenges mentioned in the document?"
+    
+    # Question input
+    question = st.text_input("Enter your question:", value=st.session_state.get("question", ""))
+    
+    # Clear answer if question changes
+    if question != st.session_state.last_question:
+        st.session_state.answer = None
+        st.session_state.last_question = question
+    
+    if question:
+        with st.spinner("Generating answer..."):
+            try:
+                start_time = time.time()
+                # Create RAG chain only once and reuse
+                if 'rag_chain' not in st.session_state:
+                    st.session_state.rag_chain = setup_rag_chain(st.session_state.vector_store)
+                answer = st.session_state.rag_chain.invoke(question)
+                processing_time = time.time() - start_time
+                
+                st.write("### Answer")
+                st.write(answer)
+                st.info(f"Processing time: {processing_time:.2f} seconds")
+                
+                if "question" in st.session_state:
+                    del st.session_state.question
+            except Exception as e:
+                st.error(f"Error generating answer: {str(e)}")
+                st.info("Try reindexing the documents or uploading a new document.")
+
+# Process the uploaded file
+if uploaded_file:
+    with st.spinner("Processing document..."):
+        vector_store, filename = process_document(uploaded_file, st.session_state.get('vector_store'))
+        if vector_store:
+            st.session_state.vector_store = vector_store
+            if st.session_state.file_name == "All Documents":
+                st.session_state.file_name = f"All Documents + {filename}"
+            else:
+                st.session_state.file_name = filename
+            st.session_state.is_reindexed = False
+            # Clear the RAG chain when new document is uploaded
+            if 'rag_chain' in st.session_state:
+                del st.session_state.rag_chain
+            st.success(f"Successfully processed {filename}")
+
+# No file uploaded yet
+else:
+    st.info("Please upload a document or reindex existing documents to begin analysis")
 
 # Instructions
 st.markdown("""
 ### Instructions
-- Enter your question in the text input above.
-- The system will search through the financial documents and provide an answer based on the available data.
+- Upload a document or use the "Reindex All Documents" button to process documents
+- Enter your question in the text input above
+- The system will search through the documents and provide an answer based on the available data
 """) 
