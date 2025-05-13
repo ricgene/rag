@@ -118,6 +118,17 @@ The application will:
 
 This is a Retrieval-Augmented Generation (RAG) system designed to analyze and answer questions about financial documents, including PDFs, Excel files, and HTML files. The system uses OpenAI's GPT models to provide intelligent responses based on the content of your documents.
 
+## Automated Testing
+
+The project includes automated tests that run on every push to the main branch. The test suite:
+- Verifies environment variable loading
+- Tests document loading and processing
+- Validates vector store creation
+- Ensures RAG chain functionality
+- Generates coverage reports
+
+Tests are run using GitHub Actions and results are reported to Codecov.
+
 ## Running the Streamlit UI
 
 To run the Streamlit UI for the RAG system, follow these steps:
