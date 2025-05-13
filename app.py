@@ -46,7 +46,18 @@ if 'authenticated' not in st.session_state:
 
 # Initialize session state for vector store and document info
 if 'vector_store' not in st.session_state:
-    st.session_state.vector_store = None
+    # Try to load existing vector store from disk
+    vector_store_path = "vector_store/faiss_index"
+    index_file = os.path.join(vector_store_path, "index.faiss")
+    if os.path.exists(index_file):
+        print("Loading existing vector store from disk...")
+        embeddings = OpenAIEmbeddings()
+        st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
+        st.session_state.file_name = "All Documents"
+        st.session_state.is_reindexed = True
+        print("Successfully loaded existing vector store")
+    else:
+        st.session_state.vector_store = None
 if 'file_name' not in st.session_state:
     st.session_state.file_name = None
 if 'is_reindexed' not in st.session_state:
@@ -78,8 +89,8 @@ if not st.session_state.authenticated:
         }
     </style>
     """, unsafe_allow_html=True)
-    password = st.text_input("Enter password to access the application:", type="password")
-    if password:
+    password = st.text_input("Enter password to access the application:", type="password", key="login_password")
+    if st.button("Login"):
         # Using environment variable for password, defaulting to 'onion' if not set
         correct_password = os.getenv("APP_PASSWORD", "onion")
         if password == correct_password:
@@ -142,6 +153,9 @@ The system processes PDF, Excel, and HTML files to provide accurate answers base
 # Sidebar for configuration
 with st.sidebar:
     st.header("Configuration")
+    # Move file uploader to sidebar
+    uploaded_file = st.file_uploader("Upload a document", type=["pdf", "xlsx", "xls", "html", "htm"])
+    
     model_name = st.selectbox(
         "Select LLM Model",
         ["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"],
@@ -333,7 +347,44 @@ Answer:"""
     return rag_chain
 
 # Main app interface
-uploaded_file = st.file_uploader("Upload a document", type=["pdf", "xlsx", "xls", "html", "htm"])
+# Always show the question input field
+st.write("### Ask a Question")
+question = st.text_input("Enter your question:", value=st.session_state.get("question", ""))
+
+# Clear answer if question changes
+if question != st.session_state.last_question:
+    st.session_state.answer = None
+    st.session_state.last_question = question
+
+# Generate answer if question is provided
+if question:
+    print("\n=== DEBUG: Before generating answer ===")
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        print(f"API Key before answer generation (first 4 chars): {api_key[:4]}...")
+        print(f"API Key length before answer generation: {len(api_key)}")
+    else:
+        print("No API key found in environment before answer generation")
+    print("=== End API Key Check ===\n")
+    
+    with st.spinner("Generating answer..."):
+        try:
+            start_time = time.time()
+            # Create RAG chain only once and reuse
+            if 'rag_chain' not in st.session_state:
+                st.session_state.rag_chain = setup_rag_chain(st.session_state.vector_store)
+            answer = st.session_state.rag_chain.invoke(question)
+            processing_time = time.time() - start_time
+            
+            st.write("### Answer")
+            st.write(answer)
+            st.info(f"Processing time: {processing_time:.2f} seconds")
+            
+            if "question" in st.session_state:
+                del st.session_state.question
+        except Exception as e:
+            st.error(f"Error generating answer: {str(e)}")
+            st.info("Try reindexing the documents or uploading a new document.")
 
 # Display example questions if a vector store exists
 if st.session_state.vector_store is not None:
@@ -348,34 +399,6 @@ if st.session_state.vector_store is not None:
     with col2:
         if st.button("What are the main risk factors?"):
             st.session_state.question = "What are the main risk factors or challenges mentioned in the document?"
-    
-    # Question input
-    question = st.text_input("Enter your question:", value=st.session_state.get("question", ""))
-    
-    # Clear answer if question changes
-    if question != st.session_state.last_question:
-        st.session_state.answer = None
-        st.session_state.last_question = question
-    
-    if question:
-        with st.spinner("Generating answer..."):
-            try:
-                start_time = time.time()
-                # Create RAG chain only once and reuse
-                if 'rag_chain' not in st.session_state:
-                    st.session_state.rag_chain = setup_rag_chain(st.session_state.vector_store)
-                answer = st.session_state.rag_chain.invoke(question)
-                processing_time = time.time() - start_time
-                
-                st.write("### Answer")
-                st.write(answer)
-                st.info(f"Processing time: {processing_time:.2f} seconds")
-                
-                if "question" in st.session_state:
-                    del st.session_state.question
-            except Exception as e:
-                st.error(f"Error generating answer: {str(e)}")
-                st.info("Try reindexing the documents or uploading a new document.")
 
 # Process the uploaded file
 if uploaded_file:
