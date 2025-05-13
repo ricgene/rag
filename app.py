@@ -202,28 +202,7 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("### Document Management")
-    if st.button("Reindex All Documents"):
-        with st.spinner("Reindexing all documents..."):
-            try:
-                # Clear existing vector store
-                st.session_state.vector_store = None
-                if 'rag_chain' in st.session_state:
-                    del st.session_state.rag_chain
-                
-                # Load and process all documents
-                documents = load_documents()
-                if documents:
-                    splits = split_documents(documents)
-                    vector_store = create_vector_store(splits)
-                    st.session_state.vector_store = vector_store
-                    st.session_state.file_name = "All Documents"
-                    st.session_state.is_reindexed = True
-                    st.success(f"Successfully reindexed {len(documents)} documents")
-                    st.rerun()  # Force a rerun to update the UI
-                else:
-                    st.warning("No documents found in the financial_docs directory")
-            except Exception as e:
-                st.error(f"Error reindexing documents: {str(e)}")
+    # Removing the reindex button and its related code
     
     st.markdown("---")
     st.markdown("""
