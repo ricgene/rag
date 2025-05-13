@@ -2,18 +2,21 @@ import os
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, TextLoader, PyPDFLoader, UnstructuredExcelLoader, UnstructuredHTMLLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
-from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate
-from langchain_core.documents import Document
+from langchain.schema import Document
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
 import json
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Any
 from bs4 import BeautifulSoup
 import glob
+import warnings
+warnings.filterwarnings('ignore')
+import pandas as pd
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,26 +40,139 @@ def clean_html_to_text(html_path):
 # Step 1: Load documents
 def load_documents() -> List[Document]:
     """Load and preprocess documents from the financial_docs directory."""
+    documents = []
+    
+    # Process PDF files
     pdf_loader = DirectoryLoader(
         "financial_docs/",
         glob="*.pdf",
         loader_cls=PyPDFLoader
     )
-    xlsx_loader = DirectoryLoader(
-        "financial_docs/",
-        glob="*.xlsx",
-        loader_cls=UnstructuredExcelLoader
-    )
-    # Preprocess HTML files
+    pdf_docs = pdf_loader.load()
+    for doc in pdf_docs:
+        # Extract company and document type from filename
+        filename = os.path.basename(doc.metadata["source"])
+        company = "Unknown"
+        doc_type = "Unknown"
+        
+        # Try to extract company name from filename
+        if "CIENA" in filename.upper():
+            company = "Ciena"
+        elif "NOKIA" in filename.upper():
+            company = "Nokia"
+        elif "INFINERA" in filename.upper():
+            company = "Infinera"
+        elif "CISCO" in filename.upper():
+            company = "Cisco"
+            
+        # Try to determine document type
+        if "EARNINGS" in filename.upper() or "Q1" in filename.upper() or "Q2" in filename.upper() or "Q3" in filename.upper() or "Q4" in filename.upper():
+            doc_type = "Earnings Report"
+        elif "TRANSCRIPT" in filename.upper():
+            doc_type = "Earnings Call Transcript"
+        elif "PRESENTATION" in filename.upper():
+            doc_type = "Investor Presentation"
+        elif "PRESS" in filename.upper() or "RELEASE" in filename.upper():
+            doc_type = "Press Release"
+            
+        # Add metadata
+        doc.metadata.update({
+            "company": company,
+            "document_type": doc_type,
+            "year": "2025" if "2025" in filename else "2024" if "2024" in filename else "Unknown",
+            "quarter": "Q1" if "Q1" in filename else "Q2" if "Q2" in filename else "Q3" if "Q3" in filename else "Q4" if "Q4" in filename else "Unknown",
+            "filename": filename,
+            "file_type": "PDF"
+        })
+        documents.append(doc)
+    
+    # Process Excel files (split by sheet)
+    for xlsx_path in glob.glob("financial_docs/*.xlsx"):
+        filename = os.path.basename(xlsx_path)
+        company = "Unknown"
+        doc_type = "Unknown"
+        # Try to extract company name from filename
+        if "CIENA" in filename.upper():
+            company = "Ciena"
+        elif "NOKIA" in filename.upper():
+            company = "Nokia"
+        elif "INFINERA" in filename.upper():
+            company = "Infinera"
+        elif "CISCO" in filename.upper():
+            company = "Cisco"
+        # Try to determine document type
+        if "TABLES" in filename.upper():
+            doc_type = "Financial Tables"
+        elif "RESULTS" in filename.upper():
+            doc_type = "Financial Results"
+        # Load each sheet as a separate document
+        try:
+            xls = pd.ExcelFile(xlsx_path)
+            for sheet_name in xls.sheet_names:
+                df = pd.read_excel(xlsx_path, sheet_name=sheet_name)
+                text = df.to_csv(index=False)
+                doc = Document(
+                    page_content=text,
+                    metadata={
+                        "source": xlsx_path,
+                        "company": company,
+                        "document_type": doc_type,
+                        "year": "2025" if "2025" in filename else "2024" if "2024" in filename else "Unknown",
+                        "quarter": "Q1" if "Q1" in filename else "Q2" if "Q2" in filename else "Q3" if "Q3" in filename else "Q4" if "Q4" in filename else "Unknown",
+                        "filename": filename,
+                        "file_type": "Excel",
+                        "sheet_name": sheet_name
+                    }
+                )
+                documents.append(doc)
+                print(f"Loaded Excel file: {filename}, sheet: {sheet_name}, rows: {len(df)}")
+        except Exception as e:
+            print(f"Error processing Excel file {filename}: {e}")
+    
+    # Process HTML files
     html_docs = []
     for html_path in glob.glob("financial_docs/*.html"):
         try:
             text = clean_html_to_text(html_path)
-            html_docs.append(Document(page_content=text, metadata={"source": html_path}))
+            filename = os.path.basename(html_path)
+            company = "Unknown"
+            doc_type = "Unknown"
+            
+            # Try to extract company name from filename
+            if "CIENA" in filename.upper():
+                company = "Ciena"
+            elif "NOKIA" in filename.upper():
+                company = "Nokia"
+            elif "INFINERA" in filename.upper():
+                company = "Infinera"
+            elif "CISCO" in filename.upper():
+                company = "Cisco"
+                
+            # Try to determine document type
+            if "NEWS" in filename.upper():
+                doc_type = "News Article"
+            elif "PRESS" in filename.upper():
+                doc_type = "Press Release"
+                
+            # Create document with metadata
+            doc = Document(
+                page_content=text,
+                metadata={
+                    "source": html_path,
+                    "company": company,
+                    "document_type": doc_type,
+                    "year": "2025" if "2025" in filename else "2024" if "2024" in filename else "Unknown",
+                    "quarter": "Q1" if "Q1" in filename else "Q2" if "Q2" in filename else "Q3" if "Q3" in filename else "Q4" if "Q4" in filename else "Unknown",
+                    "filename": filename,
+                    "file_type": "HTML"
+                }
+            )
+            html_docs.append(doc)
         except Exception as e:
             print(f"Error processing {html_path}: {e}")
-
-    documents = pdf_loader.load() + xlsx_loader.load() + html_docs
+    
+    documents.extend(html_docs)
+    print(f"Loaded {len(documents)} documents with metadata")
     return documents
 
 # Step 2: Split documents into chunks
@@ -97,42 +213,54 @@ def create_vector_store(splits):
     return vector_store
 
 # Step 4: Set up the RAG chain
-def setup_rag_chain(vector_store, llm=None, prompt=None):
-    print("Setting up RAG chain...")
+def setup_rag_chain(vector_store: FAISS) -> RunnablePassthrough:
+    """Set up the RAG chain with the vector store."""
+    retriever = vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 5}
+    )
     
-    # Create a retriever with increased k for better coverage
-    retriever = vector_store.as_retriever(search_kwargs={"k": 8})
+    # Custom prompt template that includes metadata
+    template = """You are a financial document analysis assistant. Use the following pieces of context to answer the question at the end.
+    If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+    For each piece of context, you have the following metadata:
+    - Company: The company the document is about
+    - Document Type: The type of document (e.g., Earnings Report, Press Release)
+    - Year: The year the document is from
+    - Quarter: The quarter the document is from (if applicable)
+    - Filename: The name of the file
+    - File Type: The type of file (e.g., PDF, Excel, HTML)
+    - Sheet Name: The name of the sheet (if applicable)
+
+    Context:
+    {context}
+
+    Question: {question}
+
+    Instructions:
+    1. First, identify which companies are mentioned in the context and their document types.
+    2. For each company, summarize any financial data or key information available.
+    3. If the question is about a specific company, focus on that company's data.
+    4. If the question is general, provide a comprehensive answer across all companies.
+    5. Always cite the source of information (company name and document type).
+    6. If no relevant information is found, say so explicitly.
+    7. If the document type is 'Unknown', respond with: 'I apologize, I do not have the documents to answer your question.'
+    8. If the question is about tabular data, or if any document has file type 'Excel', 'CSV', or a sheet name, always list these documents, mentioning the company, filename, and sheet name (if available), even if the question is general.
+
+    Answer:"""
     
-    # Allow injection of prompt and llm
-    if prompt is None:
-        template = """You are an AI assistant specializing in financial analysis and private equity.
-        Answer the question based only on the following context:
-        {context}
-        
-        Question: {question}
-        
-        Your answer should be comprehensive, specific, and directly reference information from the documents.
-        If the information to answer the question is not in the provided context, say so clearly.
-        If the question asks for company names, extract and list all company names mentioned in the context, even if they are not explicitly labeled as financial data. Include any available financial data or context about these companies. Provide a summary of the financial data if available.
-        Explain what is happening when the system processes the documents, including how it retrieves and uses the context to answer questions.
-        """
-        prompt = ChatPromptTemplate.from_template(template)
-    if llm is None:
-        llm = ChatOpenAI(model="gpt-4")
+    prompt = ChatPromptTemplate.from_template(template)
     
-    # Create a function to format documents
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
-    
-    # Create the RAG chain
-    rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    # Create the chain
+    chain = (
+        {"context": retriever, "question": RunnablePassthrough()}
         | prompt
-        | llm
+        | ChatOpenAI(temperature=0)
         | StrOutputParser()
     )
     
-    return rag_chain
+    return chain
 
     
 def test_with_single_file(file_path):
