@@ -46,18 +46,7 @@ if 'authenticated' not in st.session_state:
 
 # Initialize session state for vector store and document info
 if 'vector_store' not in st.session_state:
-    # Try to load existing vector store from disk
-    vector_store_path = "vector_store/faiss_index"
-    index_file = os.path.join(vector_store_path, "index.faiss")
-    if os.path.exists(index_file):
-        print("Loading existing vector store from disk...")
-        embeddings = OpenAIEmbeddings()
-        st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
-        st.session_state.file_name = "All Documents"
-        st.session_state.is_reindexed = True
-        print("Successfully loaded existing vector store")
-    else:
-        st.session_state.vector_store = None
+    st.session_state.vector_store = None
 if 'file_name' not in st.session_state:
     st.session_state.file_name = None
 if 'is_reindexed' not in st.session_state:
@@ -66,6 +55,28 @@ if 'last_question' not in st.session_state:
     st.session_state.last_question = None
 if 'answer' not in st.session_state:
     st.session_state.answer = None
+
+# Try to load existing vector store from disk
+vector_store_path = "vector_store/faiss_index"
+index_file = os.path.join(vector_store_path, "index.faiss")
+if os.path.exists(index_file) and st.session_state.vector_store is None:
+    print("Loading existing vector store from disk...")
+    try:
+        embeddings = OpenAIEmbeddings()
+        try:
+            # Try with allow_dangerous_deserialization for newer versions
+            st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
+        except TypeError:
+            # Fall back to older version without the parameter
+            st.session_state.vector_store = FAISS.load_local(vector_store_path, embeddings)
+        st.session_state.file_name = "All Documents"
+        st.session_state.is_reindexed = True
+        print("Successfully loaded existing vector store")
+    except Exception as e:
+        print(f"Error loading vector store: {str(e)}")
+        st.error(f"Failed to load vector store: {str(e)}")
+        st.info("Try reindexing your documents using the 'Reindex All Documents' button in the sidebar.")
+        st.session_state.vector_store = None
 
 # Password check
 if not st.session_state.authenticated:
@@ -182,6 +193,11 @@ with st.sidebar:
     if st.button("Reindex All Documents"):
         with st.spinner("Reindexing all documents..."):
             try:
+                # Clear existing vector store
+                st.session_state.vector_store = None
+                if 'rag_chain' in st.session_state:
+                    del st.session_state.rag_chain
+                
                 # Load and process all documents
                 documents = load_documents()
                 if documents:
@@ -190,10 +206,8 @@ with st.sidebar:
                     st.session_state.vector_store = vector_store
                     st.session_state.file_name = "All Documents"
                     st.session_state.is_reindexed = True
-                    # Clear the RAG chain when reindexing
-                    if 'rag_chain' in st.session_state:
-                        del st.session_state.rag_chain
                     st.success(f"Successfully reindexed {len(documents)} documents")
+                    st.rerun()  # Force a rerun to update the UI
                 else:
                     st.warning("No documents found in the financial_docs directory")
             except Exception as e:

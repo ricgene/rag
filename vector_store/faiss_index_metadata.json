@@ -1,11 +1,11 @@
 {
-  "num_documents": 144,
-  "created_at": "2025-05-12T19:41:16.274699",
+  "num_documents": 145,
+  "created_at": "2025-05-13T12:12:27.134295",
   "document_sources": [
-    "financial_docs/test_doc.pdf",
     "financial_docs/2025 Q1 Earnings Presentation_POST CALL (2).pdf",
-    "financial_docs/ciena Press Release Tables Q1 FY25_FINAL.xlsx",
     "financial_docs/Nokia completes acquisition of Infinera to create innovation powerhouse in optical networks, with the scale to power the data center revolution _ Nokia.com.html",
-    "financial_docs/CIENA Q1 2025 Financial Results Transcript.pdf"
+    "financial_docs/CIENA Q1 2025 Financial Results Transcript.pdf",
+    "financial_docs/test_doc.pdf",
+    "financial_docs/ciena Press Release Tables Q1 FY25_FINAL.xlsx"
   ]
 }
